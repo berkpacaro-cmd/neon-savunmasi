@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Savunması</title>
+    <!-- Tailwind CSS (Stil için) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f0f0f;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none; /* Metin seçimini engelle */
+        }
+        canvas {
+            display: block;
+        }
+        /* Arayüz Katmanı */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+        }
+        .score-board {
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+        /* Menüler */
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 2.5rem;
+            border-radius: 20px;
+            text-align: center;
+            border: 1px solid #333;
+            box-shadow: 0 0 40px rgba(0, 255, 255, 0.15);
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            min-width: 320px;
+            backdrop-filter: blur(5px);
+        }
+        .hidden {
+            display: none !important;
+        }
+        /* Buton Stili */
+        button {
+            background: linear-gradient(135deg, #00d2ff, #3a7bd5);
+            border: none;
+            padding: 15px 30px;
+            color: white;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            outline: none;
+        }
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(0, 210, 255, 0.6);
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+        h1 {
+            color: #fff;
+            margin: 0;
+            font-size: 2.5rem;
+            text-shadow: 0 0 20px rgba(0, 210, 255, 0.8);
+            font-weight: 800;
+        }
+        p {
+            color: #aaa;
+            margin: 0;
+        }
+        #final-score {
+            color: #00d2ff;
+            font-size: 3.5rem;
+            font-weight: bold;
+            margin: 10px 0;
+            text-shadow: 0 0 15px rgba(0, 210, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Oyun Alanı -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI Katmanı -->
+    <div id="ui-layer">
+        <div class="score-board">Skor: <span id="scoreEl">0</span></div>
+        <div style="color: #333; font-size: 0.8rem; text-align: right;">v1.0</div>
+    </div>
+
+    <!-- Başlangıç Ekranı -->
+    <div id="start-screen">
+        <div>
+            <h1>NEON SAVUNMASI</h1>
+            <p style="margin-top: 5px; color: #00d2ff; font-size: 0.9rem;">ARCADE SURVIVAL</p>
+        </div>
+        <div style="text-align: left; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px;">
+            <p>🎯 <strong>Amaç:</strong> Merkezdeki çekirdeği koru.</p>
+            <p>🖱️ <strong>Kontrol:</strong> Nişan almak ve ateş etmek için tıkla.</p>
+            <p>💥 <strong>İpucu:</strong> Büyük düşmanlar parçalanır.</p>
+        </div>
+        <button id="startButton">OYNA</button>
+    </div>
+
+    <!-- Oyun Bitti Ekranı -->
+    <div id="game-over-screen" class="hidden">
+        <h1>OYUN BİTTİ</h1>
+        <div>
+            <p>Toplam Skorun</p>
+            <div id="final-score">0</div>
+        </div>
+        <button id="restartButton">TEKRAR DENE</button>
+    </div>
+
+    <!-- GSAP Animasyon Kütüphanesi -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+    <script>
+        const canvas = document.querySelector('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // DOM Elementleri
+        const scoreEl = document.querySelector('#scoreEl');
+        const startScreen = document.querySelector('#start-screen');
+        const gameOverScreen = document.querySelector('#game-over-screen');
+        const finalScoreEl = document.querySelector('#final-score');
+        const startBtn = document.querySelector('#startButton');
+        const restartBtn = document.querySelector('#restartButton');
+
+        // Canvas Boyutlandırma
+        canvas.width = innerWidth;
+        canvas.height = innerHeight;
+
+        // Oyun State'i
+        let score = 0;
+        let gameActive = false;
+        let animationId;
+        let spawnInterval;
+
+        // Sınıflar
+        class Player {
+            constructor(x, y, radius, color) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 15;
+            }
+        }
+
+        class Projectile {
+            constructor(x, y, radius, color, velocity) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                this.velocity = velocity;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+
+            update() {
+                this.draw();
+                this.x = this.x + this.velocity.x;
+                this.y = this.y + this.velocity.y;
+            }
+        }
+
+        class Enemy {
+            constructor(x, y, radius, color, velocity) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                this.velocity = velocity;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+            }
+
+            update() {
+                this.draw();
+                this.x = this.x + this.velocity.x;
+                this.y = this.y + this.velocity.y;
+            }
+        }
+
+        const friction = 0.98;
+        class Particle {
+            constructor(x, y, radius, color, velocity) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                this.velocity = velocity;
+                this.alpha = 1;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.restore();
+            }
+
+            update() {
+                this.draw();
+                this.velocity.x *= friction;
+                this.velocity.y *= friction;
+                this.x = this.x + this.velocity.x;
+                this.y = this.y + this.velocity.y;
+                this.alpha -= 0.01;
+            }
+        }
+
+        // Global Değişkenler (Hata düzeltmesi için X ve Y yerine CenterX/CenterY kullanıldı)
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        
+        let player = new Player(centerX, centerY, 15, 'white');
+        let projectiles = [];
+        let enemies = [];
+        let particles = [];
+
+        function init() {
+            player = new Player(canvas.width / 2, canvas.height / 2, 15, 'white');
+            projectiles = [];
+            enemies = [];
+            particles = [];
+            score = 0;
+            scoreEl.innerHTML = score;
+            finalScoreEl.innerHTML = score;
+            gameActive = true;
+        }
+
+        function spawnEnemies() {
+            // Zorluk zamanla artar (süre azalarak)
+            spawnInterval = setInterval(() => {
+                if(!gameActive) return;
+
+                const radius = Math.random() * (30 - 10) + 10;
+                let x;
+                let y;
+
+                if (Math.random() < 0.5) {
+                    x = Math.random() < 0.5 ? 0 - radius : canvas.width + radius;
+                    y = Math.random() * canvas.height;
+                } else {
+                    x = Math.random() * canvas.width;
+                    y = Math.random() < 0.5 ? 0 - radius : canvas.height + radius;
+                }
+
+                const hue = Math.random() * 360;
+                const color = `hsl(${hue}, 50%, 50%)`;
+
+                const angle = Math.atan2(canvas.height / 2 - y, canvas.width / 2 - x);
+                
+                // Skor arttıkça düşmanlar hızlanır
+                const speedMultiplier = 1 + (score / 10000); 
+                const velocity = {
+                    x: Math.cos(angle) * speedMultiplier,
+                    y: Math.sin(angle) * speedMultiplier
+                };
+
+                enemies.push(new Enemy(x, y, radius, color, velocity));
+            }, 1000);
+        }
+
+        function animate() {
+            if (!gameActive) return;
+            animationId = requestAnimationFrame(animate);
+            
+            // Hafif iz efekti için opak arka plan
+            ctx.fillStyle = 'rgba(15, 15, 15, 0.15)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            player.draw();
+
+            particles.forEach((particle, index) => {
+                if (particle.alpha <= 0) {
+                    particles.splice(index, 1);
+                } else {
+                    particle.update();
+                }
+            });
+
+            projectiles.forEach((projectile, index) => {
+                projectile.update();
+
+                // Ekran dışına çıkan mermileri temizle
+                if (
+                    projectile.x + projectile.radius < 0 ||
+                    projectile.x - projectile.radius > canvas.width ||
+                    projectile.y + projectile.radius < 0 ||
+                    projectile.y - projectile.radius > canvas.height
+                ) {
+                    setTimeout(() => {
+                        projectiles.splice(index, 1);
+                    }, 0);
+                }
+            });
+
+            enemies.forEach((enemy, index) => {
+                enemy.update();
+
+                const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+
+                // OYUN BİTTİ
+                if (dist - enemy.radius - player.radius < 1) {
+                    cancelAnimationFrame(animationId);
+                    clearInterval(spawnInterval);
+                    gameActive = false;
+                    startScreen.classList.add('hidden');
+                    gameOverScreen.classList.remove('hidden');
+                    finalScoreEl.innerHTML = score;
+                }
+
+                projectiles.forEach((projectile, projectileIndex) => {
+                    const dist = Math.hypot(projectile.x - enemy.x, projectile.y - enemy.y);
+
+                    // Vurulma Anı
+                    if (dist - enemy.radius - projectile.radius < 1) {
+                        
+                        // Patlama partikülleri
+                        for (let i = 0; i < enemy.radius * 2; i++) {
+                            particles.push(new Particle(
+                                projectile.x, 
+                                projectile.y, 
+                                Math.random() * 2, 
+                                enemy.color, 
+                                {
+                                    x: (Math.random() - 0.5) * (Math.random() * 6),
+                                    y: (Math.random() - 0.5) * (Math.random() * 6)
+                                }
+                            ));
+                        }
+
+                        if (enemy.radius - 10 > 10) {
+                            // Düşmanı küçült
+                            score += 50;
+                            scoreEl.innerHTML = score;
+                            
+                            gsap.to(enemy, {
+                                radius: enemy.radius - 10
+                            });
+                            
+                            setTimeout(() => {
+                                projectiles.splice(projectileIndex, 1);
+                            }, 0);
+                        } else {
+                            // Düşmanı yok et
+                            score += 150;
+                            scoreEl.innerHTML = score;
+
+                            setTimeout(() => {
+                                enemies.splice(index, 1);
+                                projectiles.splice(projectileIndex, 1);
+                            }, 0);
+                        }
+                    }
+                });
+            });
+        }
+
+        // Etkileşimler
+        window.addEventListener('click', (event) => {
+            if (!gameActive) return;
+            // UI butonlarına tıklamayı yoksay (basit kontrol)
+            if(event.target.tagName === 'BUTTON') return;
+
+            const angle = Math.atan2(
+                event.clientY - canvas.height / 2,
+                event.clientX - canvas.width / 2
+            );
+            
+            const velocity = {
+                x: Math.cos(angle) * 6,
+                y: Math.sin(angle) * 6
+            };
+
+            projectiles.push(new Projectile(
+                canvas.width / 2, 
+                canvas.height / 2, 
+                5, 
+                'white', 
+                velocity
+            ));
+        });
+
+        startBtn.addEventListener('click', () => {
+            init();
+            animate();
+            spawnEnemies();
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+        });
+
+        restartBtn.addEventListener('click', () => {
+            init();
+            animate();
+            spawnEnemies();
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+        });
+
+        window.addEventListener('resize', () => {
+            canvas.width = innerWidth;
+            canvas.height = innerHeight;
+            // Oyuncuyu tekrar merkeze al
+            if(player) {
+                player.x = canvas.width / 2;
+                player.y = canvas.height / 2;
+            }
+        });
+
+    </script>
+</body>
+</html>
