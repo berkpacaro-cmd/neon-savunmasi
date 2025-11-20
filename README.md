@@ -1,2 +1,2 @@
-# neon-savunmasi
-Neon temalı, HTML5 ve Canvas kullanılarak geliştirilmiş minimalist tarayıcı hayatta kalma (arcade) oyunu. (Made with Tailwind CSS and Chart.js)
+# neon-defense
+A minimalist browser survival (arcade) game with a neon theme, developed using HTML5 and Canvas. (Made with Tailwind CSS and Chart.js)
